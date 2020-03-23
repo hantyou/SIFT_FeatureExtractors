@@ -80,14 +80,14 @@ def FindMaximaMinima(I):
 
 def EliminateScaleNonKeys(MaxMinFlag, CurrentOctave=0, scale=1.5):
     def DeepSearchEli(MaxMinFlag, y, x, o, scale):
+        # print(o)
         len = MaxMinFlag.__len__()
-        [cy, cx] = [MaxMinFlag[o].shape[0], MaxMinFlag[o].shape[1]]
         y1 = int(y / scale)
         x1 = int(x / scale)
         if o == 1:
             y1 = int(y / 2)
             x1 = int(x / 2)
-        if CurrentOctave == len:
+        if o == len-1 or o == CurrentOctave+1:
             """
             if MaxMinFlag[o][y1, x1] == 0:
                 return MaxMinFlag[o][y1, x1]
@@ -110,7 +110,10 @@ def EliminateScaleNonKeys(MaxMinFlag, CurrentOctave=0, scale=1.5):
     for k in range(n):
         y = ys[k]
         x = xs[k]
+        # print((y,x))
         MaxMinFlag[CurrentOctave][y, x] = DeepSearchEli(MaxMinFlag, y, x, CurrentOctave + 1, scale)
+        cv2.imshow("Realtime MaxMinFlag0",MaxMinFlag[0])
+        cv2.waitKey(1)
     return MaxMinFlag
 
 
@@ -219,8 +222,8 @@ def MyBiLiResize(I, factor):
     return out
 
 
-I = cv2.imread("28.jpg")
-I = cv2.resize(I, (512, 512))
+I = cv2.imread("box.png")
+# I = cv2.resize(I, (512, 512))
 gray = cv2.cvtColor(I, cv2.COLOR_BGR2GRAY)
 I = I / 255
 gray = gray / 255
@@ -237,12 +240,11 @@ scale = 1.5
 AbsDoGs = np.abs(DoGs)
 ShowPicPyr("AbsDoGs", AbsDoGs)
 ShowPicPyr("pyrPics", pyrPics)
-cv2.waitKey(0)
 MaxMinFlag = []
 for i in range(OctaveNum):
     MaxMinFlag.append(FindMaximaMinima(AbsDoGs[i]))
 MaxMinFlagEli = EliminateScaleNonKeys(MaxMinFlag.copy(), CurrentOctave=0, scale=scale)
-ShowPicPyr("Flag Eliminated Scale wise unmatchable ", MaxMinFlagEli)
+# ShowPicPyr("Flag Eliminated Scale wise unmatchable ", MaxMinFlagEli)
 # ShowPicPyr("DoGs ", DoGs)
 ShowPicPyr("Flag ", MaxMinFlag)
 GI = Direct2D_GaussianBlur(I, 7, 1.414)
