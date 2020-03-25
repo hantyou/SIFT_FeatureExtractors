@@ -21,7 +21,7 @@ float_tolerance = 1e-7
 def computeKeypointsAndDescriptors(image, sigma=1.6, num_intervals=3, assumed_blur=0.5, image_border_width=5):
     """Compute SIFT keypoints and descriptors for an input image
     """
-    image = image.astype('float32')  # 转换成32位浮点数
+    image = image.astype('float32')
     base_image = generateBaseImage(image, sigma, assumed_blur)
     num_octaves = computeNumberOfOctaves(base_image.shape)
     gaussian_kernels = generateGaussianKernels(sigma, num_intervals)
@@ -43,7 +43,8 @@ def generateBaseImage(image, sigma, assumed_blur):
     """
     logger.debug('Generating base image...')
     image = resize(image, (0, 0), fx=2, fy=2, interpolation=INTER_LINEAR)
-    sigma_diff = sqrt(max((sigma ** 2) - ((2 * assumed_blur) ** 2), 0.01))
+    sigma_diff = sqrt(max((sigma ** 2) - ((2 * assumed_blur) ** 2), 0.01))  # 这一步不知道是干什么的,
+    # 这个sigma参数是怎么算出来的
     return GaussianBlur(image, (0, 0), sigmaX=sigma_diff,
                         sigmaY=sigma_diff)  # the image blur is now sigma instead of assumed_blur
 
@@ -51,7 +52,7 @@ def generateBaseImage(image, sigma, assumed_blur):
 def computeNumberOfOctaves(image_shape):
     """Compute number of octaves in image pyramid as function of base image shape (OpenCV default)
     """
-    return int(round(log(min(image_shape)) / log(2) - 1))
+    return int(round(log(min(image_shape)) / log(2) - 3))
 
 
 def generateGaussianKernels(sigma, num_intervals):
