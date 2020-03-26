@@ -1,6 +1,8 @@
-from math import log
+from math import log, sqrt
+
 from ImageFuncs import *
 from ShowFuncs import *
+
 
 def CalcPyrNum(shape):
     """Compute number of octaves in image pyramid as function of base image shape (OpenCV default)
@@ -19,41 +21,57 @@ def GeneratePyrPics(I, LayerNum):
     return pyrPics
 
 
-def GenerateGausPyrPics(I, LayerNum, scale=1.5, gaussKernelSize=3):
+def GenerateGausPyrPics(I, NumOctaves, scale=1.5, s=3, gaussKernelSize=3, sigma=1.414213):
     pyrPics = []
-    As = []
-    Bs = []
-    DoGs = []
-    LayerNum += 1
-    for i in range(LayerNum):
-
-        tempA = Double1D_GaussianBlur(I, gaussKernelSize, 1.414213)
-        tempB = Double1D_GaussianBlur(tempA, gaussKernelSize, 1.414213)
-        pyrPics.append(I)
-        As.append(tempA)
-        Bs.append(tempB)
-        DoGs.append(tempA - tempB)
-        I = MyBiLiResize(Bs[i], scale)
-        # I = cv2.resize(Bs[i], (int(Bs[i].shape[1] / scale), int(Bs[i].shape[0] / scale)))
+    NumOctaves += 1
+    IntervalNumPerLayers = s + 3
+    GaussSigma = genGaussianKernelSigmas(sigma, s)
+    for i in range(NumOctaves):
+        PicIntervals = []
+        PicIntervals.append(I)  # first image in octave already has the correct blur
+        for gaussian_kernel in GaussSigma[0:]:
+            I = cv2.GaussianBlur(I, (0, 0), sigmaX=gaussian_kernel,
+                                 sigmaY=gaussian_kernel)
+            PicIntervals.append(I)
+        pyrPics.append(PicIntervals)
+        octave_base = PicIntervals[-3]
         if i == 0:
-            I = MyBiLiResize(Bs[i], 2)
-            # I = cv2.resize(Bs[i], (int(Bs[i].shape[1] / 2), int(Bs[i].shape[0] / 2)))
+            I = cv2.resize(octave_base, (int(octave_base.shape[1] / 2), int(octave_base.shape[0] / 2)),
+                           interpolation=cv2.INTER_NEAREST)
+        else:
+            I = cv2.resize(octave_base, (int(octave_base.shape[1] / scale), int(octave_base.shape[0] / scale)),
+                           interpolation=cv2.INTER_NEAREST)
+    return np.array(pyrPics)
 
-        # I = cv2.pyrDown(Bs[i], (Bs[i].shape[0] / 1.5, Bs[i].shape[0] / 1.5))
-    return [pyrPics, As, Bs, DoGs]
+
+def GenerateDoGImages(pyrPics):
+    dog_images = []
+    for gaussian_images_in_octave in pyrPics:
+        dog_images_in_octave = []
+        for first_image, second_image in zip(gaussian_images_in_octave, gaussian_images_in_octave[1:]):
+            dog_images_in_octave.append(cv2.subtract(second_image,
+                                                     first_image))  # ordinary subtraction will not work because the images are unsigned integers
+        dog_images.append(dog_images_in_octave)
+    return np.array(dog_images)
+
+
+def genGaussianKernelSigmas(sigma, num_intervals):
+    """Generate list of gaussian kernels at which to blur the input image. Default values of sigma, intervals, and octaves follow section 3 of Lowe's paper.
+    """
+    num_images_per_octave = num_intervals + 3
+    k = 2 ** (1. / num_intervals)
+    gaussian_kernels = np.zeros(
+        num_images_per_octave)  # scale of gaussian blur necessary to go from one blur scale to the next within an octave
+    gaussian_kernels[0] = sigma
+
+    for image_index in range(1, num_images_per_octave):
+        sigma_previous = (k ** (image_index - 1)) * sigma
+        sigma_total = k * sigma_previous
+        gaussian_kernels[image_index] = sqrt(sigma_total ** 2 - sigma_previous ** 2)
+    return gaussian_kernels
 
 
 def FindMaximaMinima(I):
-    """此处在循环中使用函数调用严重影响算法速度
-    def Judge8(I, j, i):
-        tp = I[j - 1:j + 2, i - 1:i + 2]
-        maxima = np.max(tp)
-        minima = np.min(tp)
-        if maxima == tp[1,1] or minima == tp[1,1]:
-            return 1
-        else:
-            return 0
-    """
     [h, w] = [I.shape[0], I.shape[1]]
     maxout = np.zeros((h, w))
     for i in range(1, w - 1):

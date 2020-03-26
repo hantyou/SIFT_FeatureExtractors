@@ -11,7 +11,11 @@ pyrPics = []
 pyrPics.append(I0)
 OctaveNum = CalcPyrNum([I.shape[0], I.shape[1]])
 scale = 1.5
-[pyrPics, As, Bs, DoGs] = GenerateGausPyrPics(I0, OctaveNum, scale=scale)
+# [pyrPics, As, Bs, DoGs] = GenerateGausPyrPics(I0, OctaveNum, scale=scale, s=3, gaussKernelSize=3, sigma=1.414213)
+GaussPyrPics = GenerateGausPyrPics(I0, OctaveNum, scale=1.5, s=3, )
+ShowPyrPics3("Gaussian Pyr", GaussPyrPics)
+DoGs = GenerateDoGImages(pyrPics)
+ShowPyrPics3("DoGs Pyr", DoGs)
 AbsDoGs = np.abs(DoGs)
 MaxMinFlag = []
 for i in range(OctaveNum):

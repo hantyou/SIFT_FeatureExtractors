@@ -4,7 +4,7 @@ import numpy as np
 
 def Direct2D_GaussianBlur(I, SizeOfGaussianKernel=3, sigma=1.414213):
     if not SizeOfGaussianKernel % 2:
-        print("需要高斯核大小为奇数")
+        print("Need GaussianKernel Size be Odd")
         quit()
     g1 = cv2.getGaussianKernel(SizeOfGaussianKernel, sigma)
     g2 = cv2.getGaussianKernel(SizeOfGaussianKernel, sigma)
@@ -15,7 +15,7 @@ def Direct2D_GaussianBlur(I, SizeOfGaussianKernel=3, sigma=1.414213):
 
 def Double1D_GaussianBlur(I, SizeOfGaussianKernel=3, sigma=1.414213):
     if not SizeOfGaussianKernel % 2:
-        print("需要高斯核大小为奇数")
+        print("Need GaussianKernel Size be Odd")
         quit()
     g1 = cv2.getGaussianKernel(SizeOfGaussianKernel, sigma)
     g2 = cv2.getGaussianKernel(SizeOfGaussianKernel, sigma)
@@ -26,7 +26,7 @@ def Double1D_GaussianBlur(I, SizeOfGaussianKernel=3, sigma=1.414213):
 
 def Single1D_GaussianBlur(I, SizeOfGaussianKernel=3, sigma=1.414213, T_orNot=0):
     if not SizeOfGaussianKernel % 2:
-        print("需要高斯核大小为奇数")
+        print("Need GaussianKernel Size be Odd")
         quit()
     g1 = cv2.getGaussianKernel(SizeOfGaussianKernel, sigma)
     if T_orNot == 0:
@@ -85,7 +85,7 @@ def MyBiLiResize(I, factor):
         return out
 
     if factor <= 1:
-        print("只能输入大于1的系数")
+        print("Only parameter larger than 1 is accepted")
         quit()
     w0 = I.shape[1]
     h0 = I.shape[0]
