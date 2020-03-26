@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 MIN_MATCH_COUNT = 10
 
 img1 = cv2.imread('youtiao.jpg', 0)  # queryImage
+img1 = cv2.resize(img1, (int(img1.shape[1] / 2), int(img1.shape[0] / 1.5)))
 img2 = cv2.imread('gray28.jpg', 0)  # trainImage
 
 # Compute SIFT keypoints and descriptors

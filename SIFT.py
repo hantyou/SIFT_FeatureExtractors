@@ -2,20 +2,23 @@ from SiftFuncs import *
 
 I = cv2.imread("box.png")
 # I = cv2.resize(I, (512, 512))
-gray = cv2.cvtColor(I, cv2.COLOR_BGR2GRAY)
-I = I / 255
-gray = gray / 255
+gray = cv2.cvtColor(I, cv2.COLOR_BGR2GRAY) / 255
 I = gray
 I0 = cv2.pyrUp(I)
-pyrPics = []
-pyrPics.append(I0)
 OctaveNum = CalcPyrNum([I.shape[0], I.shape[1]])
 scale = 1.5
+s = 3
+sigma = 1.414213
 # [pyrPics, As, Bs, DoGs] = GenerateGausPyrPics(I0, OctaveNum, scale=scale, s=3, gaussKernelSize=3, sigma=1.414213)
-GaussPyrPics = GenerateGausPyrPics(I0, OctaveNum, scale=1.5, s=3, )
+"""生成不同图像尺寸的高斯金字塔,每个图像尺寸(Octave)有s个不同的高斯尺度(Intervals)"""
+GaussPyrPics = GenerateGausPyrPics(I0, OctaveNum, scale=scale, s=s, sigma=sigma)
 ShowPyrPics3("Gaussian Pyr", GaussPyrPics)
-DoGs = GenerateDoGImages(pyrPics)
+"""根据高斯金字塔,做出高斯差分金字塔,结构类似,但Intervals减小1"""
+DoGs = GenerateDoGImages(GaussPyrPics)
 ShowPyrPics3("DoGs Pyr", DoGs)
+"""根据高斯差分金字塔,每个图像尺寸层的接连三个Interval上遍历出中间层的极大值点,共s-3"""
+MMLocations = FindMaxMin(DoGs, s, sigma, ImBoarderWidth=3, ContrastThresh=0.04)
+"""
 AbsDoGs = np.abs(DoGs)
 MaxMinFlag = []
 for i in range(OctaveNum):
@@ -38,3 +41,4 @@ IdiffGaussian = np.abs(DiffGaussian(I, 3, 3, sigma1=1.414213, sigma2=1.414213))
 Myimshow("Original", I)
 Myimshow("Difference", IdiffGaussian)
 cv2.waitKey(0)
+"""
