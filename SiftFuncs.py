@@ -7,6 +7,7 @@ from numpy.linalg import det, lstsq
 from ImageFuncs import *
 from ShowFuncs import *
 
+float_tolerance = 1e-7
 
 def CalcPyrNum(shape):
     """Compute number of octaves in image pyramid as function of base image shape (OpenCV default)
@@ -77,6 +78,7 @@ def GenerateDoGImages(pyrPics):
 
 def FindMaxMin(DoGs, s, sigma, ImBoarderWidth=3, ContrastThreshold=0.04):
     threshold = int(0.5 * ContrastThreshold / s * 255)
+    # threshold = 0.5 * ContrastThreshold / s
     KeyPoints = []
     for o, CurrentOctave in enumerate(DoGs):
         for i, [layer0, layer1, layer2] in enumerate(zip(CurrentOctave, CurrentOctave[1:], CurrentOctave[2:])):
@@ -87,15 +89,18 @@ def FindMaxMin(DoGs, s, sigma, ImBoarderWidth=3, ContrastThreshold=0.04):
                                   layer2[y - 1:y + 2, x - 1:x + 2], threshold):
                         localization_result = localizeExtremumViaQuadraticFit(y, x, i + 1, o, s, CurrentOctave, sigma,
                                                                               ContrastThreshold, ImBoarderWidth)
+                        if localization_result is not None:
+                            KeyPoints.append(localization_result)
+    return KeyPoints
 
 
 def IsMaxOrMin(layer0, layer1, layer2, th):
     CenterValue = layer0[1, 1]
-    Cube = [layer0, layer1, layer2]
+    Cube = stack([layer0, layer1, layer2])
     if CenterValue <= th:
         return False
     else:
-        if CenterValue == max(Cube) or CenterValue == min(Cube):
+        if CenterValue == np.max(Cube) or CenterValue == np.min(Cube):
             return True
         else:
             return False
@@ -231,7 +236,7 @@ def computeKeypointsWithOrientations(keypoint, octave_index, gaussian_image, rad
             orientation = 360. - interpolated_peak_index * 360. / num_bins
             if abs(orientation - 360.) < float_tolerance:
                 orientation = 0
-            new_keypoint = KeyPoint(*keypoint.pt, keypoint.size, orientation, keypoint.response, keypoint.octave)
+            new_keypoint = cv2.KeyPoint(*keypoint.pt, keypoint.size, orientation, keypoint.response, keypoint.octave)
             keypoints_with_orientations.append(new_keypoint)
     return keypoints_with_orientations
 

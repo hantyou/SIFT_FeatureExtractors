@@ -2,7 +2,7 @@ from SiftFuncs import *
 
 I = cv2.imread("box.png")
 # I = cv2.resize(I, (512, 512))
-gray = cv2.cvtColor(I, cv2.COLOR_BGR2GRAY) / 255
+gray = cv2.cvtColor(I, cv2.COLOR_BGR2GRAY)
 I = gray
 I0 = cv2.pyrUp(I)
 OctaveNum = CalcPyrNum([I.shape[0], I.shape[1]])
@@ -17,7 +17,9 @@ ShowPyrPics3("Gaussian Pyr", GaussPyrPics)
 DoGs = GenerateDoGImages(GaussPyrPics)
 ShowPyrPics3("DoGs Pyr", DoGs)
 """根据高斯差分金字塔,每个图像尺寸层的接连三个Interval上遍历出中间层的极大值点,共s-3"""
-MMLocations = FindMaxMin(DoGs, s, sigma, ImBoarderWidth=3, ContrastThresh=0.04)
+KeyPoints = FindMaxMin(DoGs, s, sigma, ImBoarderWidth=3, ContrastThreshold=0.04)
+"""计算极值点,并利用3D拟合寻找极大值点"""
+cv2.waitKey(0)
 """
 AbsDoGs = np.abs(DoGs)
 MaxMinFlag = []
