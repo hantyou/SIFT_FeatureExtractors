@@ -1,18 +1,25 @@
 from math import log, sqrt
 
 from numpy import array, arctan2, exp, dot, log, logical_and, roll, sqrt, stack, trace, rad2deg, \
-    where, zeros, round, float32
+    where, zeros, round, float32, all
 from numpy.linalg import det, lstsq
 
 from ImageFuncs import *
 from ShowFuncs import *
+import pysift
 
 float_tolerance = 1e-7
+
+"""计算金字塔层数"""
+
 
 def CalcPyrNum(shape):
     """Compute number of octaves in image pyramid as function of base image shape (OpenCV default)
     """
     return int(round(log(min(shape)) / log(2) - 3))
+
+
+"""生成金字塔每一层(Octave)不同尺寸(Interval)高斯模糊的sigma值"""
 
 
 def genGaussianKernelSigmas(sigma, num_intervals):
@@ -31,15 +38,21 @@ def genGaussianKernelSigmas(sigma, num_intervals):
     return gaussian_kernels
 
 
+"""生成图像金字塔,该函数废弃"""
+
+
 def GeneratePyrPics(I, LayerNum):
     pyrPics = []
     I0 = cv2.pyrUp(I)
     pyrPics.append(I0)
     pyrPics.append(I)
     for i in range(2, LayerNum):
-        pyrPics.append(MyBiLiResize(pyrPics[i - 1], 1.5))
+        pyrPics.append(MyBiLiResize(pyrPics[i - 1], 2))
         # pyrPics.append(cv2.pyrDown(pyrPics[i - 1]))
     return pyrPics
+
+
+"""生成高斯金字塔,每一层内含不同尺寸模糊的高斯模糊图像"""
 
 
 def GenerateGausPyrPics(I, NumOctaves, scale=1.5, s=3, gaussKernelSize=3, sigma=1.414213):
@@ -48,8 +61,7 @@ def GenerateGausPyrPics(I, NumOctaves, scale=1.5, s=3, gaussKernelSize=3, sigma=
     IntervalNumPerLayers = s + 3
     GaussSigma = genGaussianKernelSigmas(sigma, s)
     for i in range(NumOctaves):
-        PicIntervals = []
-        PicIntervals.append(I)  # first image in octave already has the correct blur
+        PicIntervals = [] # first image in octave already has the correct blur
         for gaussian_kernel in GaussSigma[0:]:
             I = cv2.GaussianBlur(I, (0, 0), sigmaX=gaussian_kernel,
                                  sigmaY=gaussian_kernel)
@@ -65,6 +77,9 @@ def GenerateGausPyrPics(I, NumOctaves, scale=1.5, s=3, gaussKernelSize=3, sigma=
     return np.array(pyrPics)
 
 
+"""根据生成的高斯金字塔,生成高斯差金字塔"""
+
+
 def GenerateDoGImages(pyrPics):
     dog_images = []
     for gaussian_images_in_octave in pyrPics:
@@ -76,34 +91,74 @@ def GenerateDoGImages(pyrPics):
     return np.array(dog_images)
 
 
-def FindMaxMin(DoGs, s, sigma, ImBoarderWidth=3, ContrastThreshold=0.04):
+"""找到每一层的极大值点,并且对每个极值点的邻域,根据二次拟合计算精确的极值点"""
+
+
+def FindMaxMin(Gauss, DoGs, s, sigma, ImBoarderWidth=5, ContrastThreshold=0.04):
+    print("开始寻找极大值")
     threshold = int(0.5 * ContrastThreshold / s * 255)
     # threshold = 0.5 * ContrastThreshold / s
     KeyPoints = []
     for o, CurrentOctave in enumerate(DoGs):
         for i, [layer0, layer1, layer2] in enumerate(zip(CurrentOctave, CurrentOctave[1:], CurrentOctave[2:])):
-            [h, w] = [layer0.shape[0], layer0.shape[1]]
-            for y in range(ImBoarderWidth, h - ImBoarderWidth):
-                for x in range(ImBoarderWidth, w - ImBoarderWidth):
+            # [h, w] = [layer0.shape[0], layer0.shape[1]]
+            for y in range(ImBoarderWidth, layer0.shape[0] - ImBoarderWidth):
+                for x in range(ImBoarderWidth, layer0.shape[1] - ImBoarderWidth):
                     if IsMaxOrMin(layer0[y - 1:y + 2, x - 1:x + 2], layer1[y - 1:y + 2, x - 1:x + 2],
                                   layer2[y - 1:y + 2, x - 1:x + 2], threshold):
+                        # localizeExtremumViaQuadraticFit() 函数计算过程中就完成了
+                        # 1. 剔除对比度过小的点;
+                        # 2. 剔除边缘曲率过大的点
+                        # 这两个步骤。
                         localization_result = localizeExtremumViaQuadraticFit(y, x, i + 1, o, s, CurrentOctave, sigma,
                                                                               ContrastThreshold, ImBoarderWidth)
                         if localization_result is not None:
-                            KeyPoints.append(localization_result)
+                            keypoint, localized_image_index = localization_result
+                            keypoints_with_orientations = computeKeypointsWithOrientations(
+                                keypoint, o, Gauss[o][localized_image_index])
+                            for keypoint_with_orientation in keypoints_with_orientations:
+                                KeyPoints.append(keypoint_with_orientation)
     return KeyPoints
 
 
-def IsMaxOrMin(layer0, layer1, layer2, th):
-    CenterValue = layer0[1, 1]
-    Cube = stack([layer0, layer1, layer2])
-    if CenterValue <= th:
-        return False
-    else:
-        if CenterValue == np.max(Cube) or CenterValue == np.min(Cube):
-            return True
-        else:
-            return False
+def IsMaxOrMin(first_subimage, second_subimage, third_subimage, threshold):
+    """Return True if the center element of the 3x3x3 input array is strictly greater than or less than all its neighbors, False otherwise
+    """
+    center_pixel_value = second_subimage[1, 1]
+    if abs(center_pixel_value) > threshold:
+        if center_pixel_value > 0:
+            return all(center_pixel_value >= first_subimage) and \
+                   all(center_pixel_value >= third_subimage) and \
+                   all(center_pixel_value >= second_subimage[0, :]) and \
+                   all(center_pixel_value >= second_subimage[2, :]) and \
+                   center_pixel_value >= second_subimage[1, 0] and \
+                   center_pixel_value >= second_subimage[1, 2]
+        elif center_pixel_value < 0:
+            return all(center_pixel_value <= first_subimage) and \
+                   all(center_pixel_value <= third_subimage) and \
+                   all(center_pixel_value <= second_subimage[0, :]) and \
+                   all(center_pixel_value <= second_subimage[2, :]) and \
+                   center_pixel_value <= second_subimage[1, 0] and \
+                   center_pixel_value <= second_subimage[1, 2]
+    return False
+
+
+r"""
+    if center_pixel_value > 0:
+        return all(center_pixel_value >= first_subimage) and \
+               all(center_pixel_value >= third_subimage) and \
+               all(center_pixel_value >= second_subimage[0, :]) and \
+               all(center_pixel_value >= second_subimage[2, :]) and \
+               center_pixel_value >= second_subimage[1, 0] and \
+               center_pixel_value >= second_subimage[1, 2]
+    elif center_pixel_value < 0:
+        return all(center_pixel_value <= first_subimage) and \
+               all(center_pixel_value <= third_subimage) and \
+               all(center_pixel_value <= second_subimage[0, :]) and \
+               all(center_pixel_value <= second_subimage[2, :]) and \
+               center_pixel_value <= second_subimage[1, 0] and \
+               center_pixel_value <= second_subimage[1, 2]
+"""
 
 
 def localizeExtremumViaQuadraticFit(y, x, i, o, num_intervals, DoGs, sigma,
@@ -119,10 +174,11 @@ def localizeExtremumViaQuadraticFit(y, x, i, o, num_intervals, DoGs, sigma,
         pixel_cube = stack([first_image[y - 1:y + 2, x - 1:x + 2],
                             second_image[y - 1:y + 2, x - 1:x + 2],
                             third_image[y - 1:y + 2, x - 1:x + 2]]).astype('float32') / 255.
-        gradient = computeGradientAtCenterPixel(pixel_cube)
-        hessian = computeHessianAtCenterPixel(pixel_cube)
+        gradient = computeGradientAtCenterPixel(pixel_cube)  # 计算梯度值
+        hessian = computeHessianAtCenterPixel(pixel_cube)  # 计算海瑟矩阵
         extremum_update = -lstsq(hessian, gradient, rcond=None)[0]
         if abs(extremum_update[0]) < 0.5 and abs(extremum_update[1]) < 0.5 and abs(extremum_update[2]) < 0.5:
+            # 都小于0.5说明没办法继续更新了，所以直接剔除，终止迭代
             break
         x += int(round(extremum_update[0]))
         y += int(round(extremum_update[1]))
@@ -136,19 +192,26 @@ def localizeExtremumViaQuadraticFit(y, x, i, o, num_intervals, DoGs, sigma,
         return None
     if attempt_index >= num_attempts_until_convergence - 1:
         return None
-    functionValueAtUpdatedExtremum = pixel_cube[1, 1, 1] + 0.5 * dot(gradient, extremum_update)
+    functionValueAtUpdatedExtremum = pixel_cube[1, 1, 1] + 0.5 * dot(gradient, extremum_update)  # 求出极大点处的值
     if abs(functionValueAtUpdatedExtremum) * num_intervals >= ContrastThreshold:
         xy_hessian = hessian[:2, :2]
         xy_hessian_trace = trace(xy_hessian)
         xy_hessian_det = det(xy_hessian)
+        """
+        eigenvalue_ratio是一个自定义的阈值,在论文中写作r
+        论文中的公式如下:
+            Tr(H)^2 * r < Det(H) * (r+1)^2
+        H 是取Hessian矩阵的左上角的二阶主子式,也就是去除s分量的影响,只保留x,y
+        """
         if xy_hessian_det > 0 and eigenvalue_ratio * (xy_hessian_trace ** 2) < (
                 (eigenvalue_ratio + 1) ** 2) * xy_hessian_det:
             # Contrast check passed -- construct and return OpenCV KeyPoint object
             keypoint = cv2.KeyPoint()
             keypoint.pt = (
                 (x + extremum_update[0]) * (2 ** o), (y + extremum_update[1]) * (2 ** o))
-            keypoint.octave = o + i * (2 ** 8) + int(round((extremum_update[2] + 0.5) * 255)) * (
-                    2 ** 16)
+            # 这里乘了2的o次方,表示归到金字塔底层图像
+            # keypoint.octave = o + i * (2 ** 8) + int(round((extremum_update[2] + 0.5) * 255)) * (2 ** 16)
+            keypoint.octave = o
             keypoint.size = sigma * (2 ** ((i + extremum_update[2]) / float32(num_intervals))) * (
                     2 ** (o + 1))  # octave_index + 1 because the input image was doubled
             keypoint.response = abs(functionValueAtUpdatedExtremum)
@@ -191,6 +254,11 @@ def computeHessianAtCenterPixel(pixel_array):
 def computeKeypointsWithOrientations(keypoint, octave_index, gaussian_image, radius_factor=3, num_bins=36,
                                      peak_ratio=0.8, scale_factor=1.5):
     """Compute orientations for each keypoint
+    """
+    """
+    疑问:
+    1. scale_factor有什么含义,为什么是1.5,之前金字塔的放缩尺度不是2嘛
+    2. 
     """
     keypoints_with_orientations = []
     image_shape = gaussian_image.shape
@@ -255,62 +323,3 @@ def FindMaximaMinima(I):
                 flag = 0
             maxout[j, i] = flag
     return maxout
-
-
-def DecideKeys(I):
-    [h, w] = [I.shape[0], I.shape[1]]
-    maxout = np.zeros((h, w))
-    for i in range(1, w - 1):
-        for j in range(1, h - 1):
-            tp = I[j - 1:j + 2, i - 1:i + 2]
-            maxima = np.max(tp)
-            minima = np.min(tp)
-            if maxima == tp[1, 1] or minima == tp[1, 1]:
-                flag = 1
-            else:
-                flag = 0
-            maxout[j, i] = flag
-    return maxout
-
-
-def EliminateScaleNonKeys(MaxMinFlag, CurrentOctave=0, scale=1.5):
-    def DeepSearchEli(MaxMinFlag, y, x, o, scale):
-        # print(o)
-        len = MaxMinFlag.__len__()
-        y1 = int(y / scale)
-        x1 = int(x / scale)
-        if o == 1:
-            y1 = int(y / 2)
-            x1 = int(x / 2)
-        if o == len - 1:
-            """
-            if MaxMinFlag[o][y1, x1] == 0:
-                return MaxMinFlag[o][y1, x1]
-            else:
-                return 1
-            """
-            return MaxMinFlag[o][y1, x1]
-        else:
-            if MaxMinFlag[o][y1, x1] == 1:
-                MaxMinFlag[o][y1, x1] = DeepSearchEli(MaxMinFlag, y1, x1, o + 1, scale)
-            else:
-                MaxMinFlag[o][y1, x1] = 0
-            return MaxMinFlag[o][y1, x1]
-
-    len = MaxMinFlag.__len__()
-    yxs = np.where(MaxMinFlag[CurrentOctave] == 1)
-    ys = yxs[0]
-    xs = yxs[1]
-    n = ys.__len__()
-    for k in range(n):
-        y = ys[k]
-        x = xs[k]
-        # print((y,x))
-        MaxMinFlag[CurrentOctave][y, x] = DeepSearchEli(MaxMinFlag, y, x, CurrentOctave + 1, scale)
-        cv2.imshow("Realtime MaxMinFlag0", MaxMinFlag[0])
-        cv2.imshow("Realtime MaxMinFlag1", MaxMinFlag[1])
-        cv2.imshow("Realtime MaxMinFlag2", MaxMinFlag[2])
-        cv2.imshow("Realtime MaxMinFlag3", MaxMinFlag[3])
-        cv2.imshow("Realtime MaxMinFlag4", MaxMinFlag[4])
-        cv2.waitKey(1)
-    return MaxMinFlag

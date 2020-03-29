@@ -5,14 +5,16 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 import pysift
+import time
 
 logger = logging.getLogger(__name__)
 
 MIN_MATCH_COUNT = 10
 
-img1 = cv2.imread('youtiao.jpg', 0)  # queryImage
+img1 = cv2.imread('box.png', 0)  # queryImage
 img1 = cv2.resize(img1, (int(img1.shape[1] / 2), int(img1.shape[0] / 1.5)))
-img2 = cv2.imread('gray28.jpg', 0)  # trainImage
+img2 = cv2.imread('box_in_scene.png', 0)  # trainImage
+img2 = cv2.resize(img2, (int(img2.shape[1] / 2), int(img2.shape[0] / 2)))
 
 # Compute SIFT keypoints and descriptors
 kp1, des1 = pysift.computeKeypointsAndDescriptors(img1)

@@ -1,4 +1,5 @@
 import logging
+import time
 from functools import cmp_to_key
 
 from cv2 import resize, GaussianBlur, subtract, KeyPoint, INTER_LINEAR, INTER_NEAREST
@@ -27,10 +28,16 @@ def computeKeypointsAndDescriptors(image, sigma=1.6, num_intervals=3, assumed_bl
     gaussian_kernels = generateGaussianKernels(sigma, num_intervals)
     gaussian_images = generateGaussianImages(base_image, num_octaves, gaussian_kernels)
     dog_images = generateDoGImages(gaussian_images)
+    start = time.process_time()
     keypoints = findScaleSpaceExtrema(gaussian_images, dog_images, num_intervals, sigma, image_border_width)
+    eclips = time.process_time() - start
+    print("Find Points and Cal costed " + str(eclips))
     keypoints = removeDuplicateKeypoints(keypoints)
     keypoints = convertKeypointsToInputImageSize(keypoints)
+    start = time.process_time()
     descriptors = generateDescriptors(keypoints, gaussian_images)
+    eclips = time.process_time() - start
+    print("Generate Discriptor cost : " + str(eclips))
     return keypoints, descriptors
 
 
@@ -110,7 +117,7 @@ def generateDoGImages(gaussian_images):
 # Scale-space extrema related #
 ###############################
 
-def findScaleSpaceExtrema(gaussian_images, dog_images, num_intervals, sigma, image_border_width,
+def findScaleSpaceExtrema(gaussian_images, dog_images, num_intervals, sigma, image_border_width=5,
                           contrast_threshold=0.04):
     """Find pixel positions of all scale-space extrema in the image pyramid
     """
@@ -207,8 +214,9 @@ def localizeExtremumViaQuadraticFit(i, j, image_index, octave_index, num_interva
             keypoint = KeyPoint()
             keypoint.pt = (
                 (j + extremum_update[0]) * (2 ** octave_index), (i + extremum_update[1]) * (2 ** octave_index))
-            keypoint.octave = octave_index + image_index * (2 ** 8) + int(round((extremum_update[2] + 0.5) * 255)) * (
-                    2 ** 16)
+            # keypoint.octave = octave_index + image_index * (2 ** 8) + int(round((extremum_update[2] + 0.5) * 255)) * (
+            #       2 ** 16)
+            keypoint.octave = octave_index + image_index * (2 ** 8)
             keypoint.size = sigma * (2 ** ((image_index + extremum_update[2]) / float32(num_intervals))) * (
                     2 ** (octave_index + 1))  # octave_index + 1 because the input image was doubled
             keypoint.response = abs(functionValueAtUpdatedExtremum)
@@ -358,7 +366,7 @@ def convertKeypointsToInputImageSize(keypoints):
     for keypoint in keypoints:
         keypoint.pt = tuple(0.5 * array(keypoint.pt))
         keypoint.size *= 0.5
-        keypoint.octave = (keypoint.octave & ~255) | ((keypoint.octave - 1) & 255)
+        # keypoint.octave = (keypoint.octave & ~255) | ((keypoint.octave - 1) & 255)
         converted_keypoints.append(keypoint)
     return converted_keypoints
 
@@ -370,11 +378,14 @@ def convertKeypointsToInputImageSize(keypoints):
 def unpackOctave(keypoint):
     """Compute octave, layer, and scale from a keypoint
     """
+    # octave = keypoint.octave & 255
+    # layer = (keypoint.octave >> 8) & 255
+    # if octave >= 128:
+    #    octave = octave | -128
+    # scale = 1 / float32(1 << octave) if octave >= 0 else float32(1 << -octave)
     octave = keypoint.octave & 255
     layer = (keypoint.octave >> 8) & 255
-    if octave >= 128:
-        octave = octave | -128
-    scale = 1 / float32(1 << octave) if octave >= 0 else float32(1 << -octave)
+    scale = 2 ** (-(octave - 1))
     return octave, layer, scale
 
 
@@ -382,14 +393,19 @@ def generateDescriptors(keypoints, gaussian_images, window_width=4, num_bins=8, 
                         descriptor_max_value=0.2):
     """Generate descriptors for each keypoint
     """
+    print("进入描述生成器")
     logger.debug('Generating descriptors...')
     descriptors = []
 
     for keypoint in keypoints:
-        octave, layer, scale = unpackOctave(keypoint)
-        gaussian_image = gaussian_images[octave + 1, layer]
+        # octave, layer, scale = unpackOctave(keypoint)
+        octave = keypoint.octave & 255
+        layer = (keypoint.octave >> 8) & 255
+        scale = 2 ** (-(octave - 1))
+        gaussian_image = gaussian_images[octave, layer]
+        # gaussian_image = gaussian_images[octave +1, layer]
         num_rows, num_cols = gaussian_image.shape
-        point = round(scale * array(keypoint.pt)).astype('int')
+        point = round(scale * array(keypoint.pt)).astype('int')  # 对应第0层，本来scale应该为1，但是
         bins_per_degree = num_bins / 360.
         angle = 360. - keypoint.angle
         cos_angle = cos(deg2rad(angle))
